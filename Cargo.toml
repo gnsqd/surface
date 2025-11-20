@@ -3,6 +3,10 @@ name = "surface-lib"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
+description = "High-performance Rust library for volatility surface calibration and option pricing (SVI, linear IV, temporal interpolation)."
+repository = "https://github.com/gnsqd/surface"
+readme = "README.md"
+documentation = "https://docs.rs/surface-lib"
 
 [features]
 default = ["serde"]

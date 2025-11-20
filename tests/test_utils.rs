@@ -1,5 +1,6 @@
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 use surface_lib::{MarketDataRow, OptimizationConfig};
 
 /// CSV row structure matching the actual data format
@@ -39,7 +40,7 @@ fn extract_expiration_from_symbol(symbol: &str) -> Option<String> {
 }
 
 /// Global mapping to store timestamp -> expiration string mappings learned from CSV data
-static mut EXPIRATION_MAPPING: Option<HashMap<i64, String>> = None;
+static EXPIRATION_MAPPING: OnceLock<Mutex<HashMap<i64, String>>> = OnceLock::new();
 
 /// Load market data from CSV file and convert to surface-lib format
 pub fn load_test_data(file_path: &str) -> Result<Vec<MarketDataRow>, Box<dyn std::error::Error>> {
@@ -77,8 +78,10 @@ pub fn load_test_data(file_path: &str) -> Result<Vec<MarketDataRow>, Box<dyn std
     }
 
     // Store the mapping globally for use by timestamp_to_expiration_string
-    unsafe {
-        EXPIRATION_MAPPING = Some(timestamp_to_expiration);
+    let mapping = EXPIRATION_MAPPING.get_or_init(|| Mutex::new(HashMap::new()));
+    {
+        let mut guard = mapping.lock().unwrap();
+        *guard = timestamp_to_expiration;
     }
 
     Ok(data)
@@ -127,18 +130,18 @@ pub fn get_available_expirations(data: &[MarketDataRow]) -> Vec<(i64, String, us
 
 /// Convert timestamp back to expiration string for display
 fn timestamp_to_expiration_string(timestamp: i64) -> String {
-    unsafe {
-        if let Some(ref mapping) = EXPIRATION_MAPPING {
-            // Try exact match first
-            if let Some(expiration_str) = mapping.get(&timestamp) {
-                return expiration_str.clone();
-            }
+    if let Some(mapping) = EXPIRATION_MAPPING.get() {
+        let guard = mapping.lock().unwrap();
 
-            // Try approximate matching (within 1 day) if exact match fails
-            for (&mapped_timestamp, expiration_str) in mapping.iter() {
-                if (timestamp - mapped_timestamp).abs() < 86400 {
-                    return expiration_str.clone();
-                }
+        // Try exact match first
+        if let Some(expiration_str) = guard.get(&timestamp) {
+            return expiration_str.clone();
+        }
+
+        // Try approximate matching (within 1 day) if exact match fails
+        for (&mapped_timestamp, expiration_str) in guard.iter() {
+            if (timestamp - mapped_timestamp).abs() < 86400 {
+                return expiration_str.clone();
             }
         }
     }
